@@ -1,4 +1,5 @@
 """断点续传：进度缓存管理。"""
+
 from __future__ import annotations
 
 import json
@@ -75,4 +76,5 @@ class ProgressManager:
 def _sanitize(name: str) -> str:
     """清理字符串，使其适合作为目录名。"""
     import re
+
     return re.sub(r'[<>:"/\\|?*]', "_", name)

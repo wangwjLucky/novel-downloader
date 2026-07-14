@@ -1,4 +1,5 @@
 """HTML/API 内容解析模块，按站点规则提取章节列表和正文。"""
+
 from __future__ import annotations
 
 from bs4 import BeautifulSoup, Tag
@@ -54,9 +55,7 @@ def parse_chapter_list(
     return chapters
 
 
-def parse_chapter_content(
-    html: str, site: SiteConfig
-) -> tuple[str, str]:
+def parse_chapter_content(html: str, site: SiteConfig) -> tuple[str, str]:
     """解析单章正文。
 
     返回: (章节标题, 正文文本)
@@ -74,9 +73,7 @@ def parse_chapter_content(
     if site.content_selector:
         el = soup.select_one(site.content_selector)
         if not el:
-            raise ParseError(
-                f"未找到正文内容，请检查选择器: {site.content_selector}"
-            )
+            raise ParseError(f"未找到正文内容，请检查选择器: {site.content_selector}")
     else:
         el = soup.body
         if not el:
@@ -94,5 +91,6 @@ def parse_chapter_content(
 def clean_title(title: str) -> str:
     """清理章节标题中的多余空白。"""
     import re
+
     title = re.sub(r"\s+", " ", title).strip()
     return title
