@@ -9,6 +9,7 @@ from engine.fetcher import Fetcher
 from engine.parser import (
     ParseError,
     parse_chapter_content,
+    parse_chapter_content_from_api,
     parse_chapter_list,
 )
 from engine.progress import ProgressManager
@@ -90,9 +91,14 @@ class Downloader:
                 continue
             raw_file = self._progress._raw_dir / f"{ch['index']:04d}.html"
             if raw_file.exists():
-                html = raw_file.read_text(encoding="utf-8")
+                raw = raw_file.read_text(encoding="utf-8")
                 try:
-                    title, text = parse_chapter_content(html, self._site)
+                    if self._site.list_type == "encrypted_api":
+                        import json
+                        api_data = json.loads(raw)
+                        title, text = parse_chapter_content_from_api(api_data, self._site)
+                    else:
+                        title, text = parse_chapter_content(raw, self._site)
                     title = title or ch["title"]
                     contents.append((title, text))
                 except ParseError:
@@ -116,6 +122,8 @@ class Downloader:
 
         if site.list_type == "api":
             return self._discover_from_api()
+        elif site.list_type == "encrypted_api":
+            return self._discover_from_encrypted_api()
         else:
             return self._discover_from_html()
 
@@ -154,6 +162,34 @@ class Downloader:
 
         raise ParseError("无法解析API返回的章节列表")
 
+    def _discover_from_encrypted_api(self) -> list[tuple[int, str, str]]:
+        """通过加密 API 获取章节列表。"""
+        from curl_cffi import requests
+
+        from config import settings
+        from engine.aes_crypto import encrypt_api_request, _API_HOST
+
+        book_id = self._book_id
+        url = (
+            f"https://{_API_HOST}/api/booklist"
+            f"?token={encrypt_api_request({'id': book_id})}"
+        )
+
+        resp = requests.get(url, headers={"Referer": "https://www.bqg691.cc/"}, impersonate="chrome120", timeout=settings.request_timeout)
+        resp.raise_for_status()
+        data = resp.json()
+
+        chapters = data.get("list", [])
+        if not chapters:
+            raise ParseError("加密 API 未返回章节列表")
+
+        result: list[tuple[int, str, str]] = []
+        for i, name in enumerate(chapters, 1):
+            # URL 字段存储章节序号，下载时使用
+            result.append((i, name.strip(), str(i)))
+
+        return result
+
     def _discover_from_html(self) -> list[tuple[int, str, str]]:
         """从 HTML 目录页解析章节列表。"""
         html = self._fetcher.get_text(self._url, encoding=self._site.encoding)
@@ -165,8 +201,61 @@ class Downloader:
             return
 
         try:
-            html = self._fetcher.get_text(url, encoding=self._site.encoding)
-            self._progress.save_raw_html(index, html)
-            self._progress.mark_done(index)
+            if self._site.list_type == "encrypted_api":
+                self._download_chapter_encrypted(index, url)
+            else:
+                html = self._fetcher.get_text(url, encoding=self._site.encoding)
+                self._progress.save_raw_html(index, html)
+                self._progress.mark_done(index)
         except Exception as e:
             print(f"  第{index}章下载失败: {e}", file=sys.stderr)
+
+    def _download_chapter_encrypted(self, index: int, chapter_id: str) -> None:
+        """通过加密 API 下载单个章节（curl_cffi 模拟浏览器指纹 + 限速重试）。"""
+        import time
+
+        from curl_cffi import requests
+
+        from config import settings
+        from engine.aes_crypto import encrypt_api_request, _API_HOST
+
+        headers = {
+            "User-Agent": settings.user_agent,
+            "Referer": "https://www.bqg691.cc/",
+        }
+
+        for attempt in range(settings.retry_times + 1):
+            try:
+                # 请求间隔控制
+                elapsed = time.time() - self._fetcher._last_request_time
+                if elapsed < settings.request_interval:
+                    time.sleep(settings.request_interval - elapsed)
+
+                url = (
+                    f"https://{_API_HOST}/api/chapter"
+                    f"?token={encrypt_api_request({'id': str(self._book_id), 'chapterid': int(chapter_id)})}"
+                )
+
+                resp = requests.get(url, headers=headers, impersonate="chrome120", timeout=settings.request_timeout)
+                self._fetcher._last_request_time = time.time()
+
+                if resp.status_code == 403:
+                    if attempt < settings.retry_times:
+                        wait = 4 * (attempt + 1)
+                        print(f"    触发限流，{wait}秒后重试...", end="")
+                        time.sleep(wait)
+                        continue
+                    resp.raise_for_status()
+
+                resp.raise_for_status()
+                self._progress.save_raw_html(index, resp.text)
+                self._progress.mark_done(index)
+                return
+
+            except Exception as e:
+                if attempt < settings.retry_times:
+                    wait = 4 * (attempt + 1)
+                    print(f"    请求失败({e})，{wait}秒后重试...", end="")
+                    time.sleep(wait)
+                else:
+                    raise

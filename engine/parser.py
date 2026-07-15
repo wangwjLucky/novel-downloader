@@ -88,6 +88,19 @@ def parse_chapter_content(html: str, site: SiteConfig) -> tuple[str, str]:
     return title, text
 
 
+def parse_chapter_content_from_api(
+    api_data: dict, site: SiteConfig
+) -> tuple[str, str]:
+    """从加密 API 的 JSON 响应中解析章节内容。
+
+    返回: (章节标题, 正文文本)
+    """
+    title = api_data.get("chaptername", "")
+    text = api_data.get("txt", "")
+    # API 返回的正文用 \n 分隔段落，直接使用
+    return title, text
+
+
 def clean_title(title: str) -> str:
     """清理章节标题中的多余空白。"""
     import re

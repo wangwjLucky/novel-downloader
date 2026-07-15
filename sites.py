@@ -59,6 +59,19 @@ SITES: list[SiteConfig] = [
         remove_selectors=["script", "style"],
         encoding="gbk",
     ),
+    # ── 笔趣阁(加密API版) ────────────────────────────
+    # bqg691.cc / bqg78.com / biquge78.org 等使用 apibi.cc 加密 API
+    SiteConfig(
+        name="笔趣阁(加密版)",
+        match_url=r"bqg691\.cc|bqg78\.com|biquge78\.org",
+        list_type="encrypted_api",
+        book_id_pattern=r"book/(\d+)",
+        encoding="utf-8",
+        # 章节内容从加密 API 获取，不需要 HTML 选择器
+        content_selector="",
+        title_selector="",
+        remove_selectors=[],
+    ),
     # ── 番茄小说 ──────────────────────────────────────
     SiteConfig(
         name="番茄小说",
