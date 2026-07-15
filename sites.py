@@ -22,6 +22,8 @@ class SiteConfig:
     remove_selectors: list[str] = field(default_factory=list)
     # 章节链接前缀（用于拼接完整 URL）
     link_prefix: str = ""
+    # 目录页 URL 模板（用于从 book_id 自动构造目录 URL，如 "https://example.com/mm/{book_id}/"）
+    list_url_template: str | None = None
 
 
 # 内置站点规则
@@ -71,6 +73,20 @@ SITES: list[SiteConfig] = [
         content_selector="",
         title_selector="",
         remove_selectors=[],
+    ),
+    # ── anpan.cc (笔趣阁风格) ────────────────────────
+    SiteConfig(
+        name="anpan.cc",
+        match_url=r"anpan\.cc",
+        list_type="html",
+        list_selector="table#at a",
+        content_selector="div#htmlContent",
+        title_selector="h1",
+        remove_selectors=["script", "style", ".ad", ".banner", ".hot"],
+        encoding="utf-8",
+        link_prefix="https://www.anpan.cc",
+        book_id_pattern=r"mm/(\d+)",
+        list_url_template="https://www.anpan.cc/mm/{book_id}/",
     ),
     # ── 番茄小说 ──────────────────────────────────────
     SiteConfig(

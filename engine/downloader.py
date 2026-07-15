@@ -169,7 +169,7 @@ class Downloader:
         from config import settings
         from engine.aes_crypto import encrypt_api_request, _API_HOST
 
-        book_id = self._book_id
+        book_id = int(self._book_id)
         url = (
             f"https://{_API_HOST}/api/booklist"
             f"?token={encrypt_api_request({'id': book_id})}"
@@ -192,8 +192,12 @@ class Downloader:
 
     def _discover_from_html(self) -> list[tuple[int, str, str]]:
         """从 HTML 目录页解析章节列表。"""
-        html = self._fetcher.get_text(self._url, encoding=self._site.encoding)
-        return parse_chapter_list(html, self._site, self._url)
+        # 如果配置了 list_url_template，自动构造目录 URL
+        url = self._url
+        if self._site.list_url_template and self._book_id and self._book_id != "default":
+            url = self._site.list_url_template.format(book_id=self._book_id)
+        html = self._fetcher.get_text(url, encoding=self._site.encoding)
+        return parse_chapter_list(html, self._site, url)
 
     def _download_chapter(self, index: int, title: str, url: str) -> None:
         """下载单个章节。"""
@@ -233,7 +237,7 @@ class Downloader:
 
                 url = (
                     f"https://{_API_HOST}/api/chapter"
-                    f"?token={encrypt_api_request({'id': str(self._book_id), 'chapterid': int(chapter_id)})}"
+                    f"?token={encrypt_api_request({'id': int(self._book_id), 'chapterid': int(chapter_id)})}"
                 )
 
                 resp = requests.get(url, headers=headers, impersonate="chrome120", timeout=settings.request_timeout)
