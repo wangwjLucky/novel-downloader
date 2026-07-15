@@ -16,29 +16,41 @@ novel-downloader/
 │   ├── fetcher.py              # 网络请求 + 频率控制/重试
 │   ├── parser.py               # 按规则解析 HTML/API
 │   ├── downloader.py           # 调度：发现章节 → 下载 → 暂存
-│   └── progress.py             # 断点续传（进度缓存）
+│   ├── progress.py             # 断点续传（进度缓存）
+│   └── aes_crypto.py           # AES 加密（bqg691 等加密 API 站点）
 ├── formats/
 │   ├── __init__.py
 │   ├── txt.py                  # TXT 输出
 │   └── epub.py                 # EPUB 输出
 ├── cli.py                      # 命令行入口
+├── main.py                     # 便捷入口
 ├── requirements.txt
-└── README.md
+└── CLAUDE.md                   # 项目说明
 ```
 
 ## 架构与数据流
 
 ```
-输入 URL → 站点识别(sites.py) → 发现章节列表(parser.py)
+输入 URL → 站点识别(sites.py) → 发现章节列表(parser.py / API)
                                   │
                           断点续传检查(progress.py)
                                   │
-                          逐个下载(fetcher.py + parser.py)
+                          逐个下载(fetcher.py + parser.py / aes_crypto.py)
                                   │
                           更新进度缓存(progress.py)
                                   │
                           输出 TXT/EPUB(formats/)
 ```
+
+### 章节列表获取方式
+
+支持三种 `list_type` 模式：
+
+| 模式 | 说明 | 适用站点 |
+|------|------|----------|
+| `html` | 解析 HTML 目录页的 CSS 选择器 | 起点中文网、笔趣阁、anpan.cc |
+| `api` | 调用标准 JSON API | QQ 阅读、番茄小说 |
+| `encrypted_api` | 调用 AES 加密 API（curl_cffi 模拟浏览器指纹） | bqg691.cc 等 |
 
 ## 全局配置 (.env → config.py)
 
@@ -68,7 +80,9 @@ USER_AGENT=Mozilla/5.0 ...  # 默认 UA
 | `content_selector` | 正文内容 CSS 选择器 |
 | `title_selector` | 章节标题 CSS 选择器（可选） |
 | `remove_selectors` | 需移除的广告等内容 |
+| `list_url_template` | 从 book_id 自动构造目录页 URL（可选） |
 | `hook` | 可选的自定义处理函数名 |
+| `encoding` | 页面编码 |
 
 ### 站点适配方案
 
@@ -76,6 +90,8 @@ USER_AGENT=Mozilla/5.0 ...  # 默认 UA
 - **起点中文网** (`book.qidian.com`)：HTML 模式解析目录页，需处理反爬
 - **番茄小说** (`fanqienovel.com`)：API 模式，需处理签名参数
 - **笔趣阁类** (`*biquge*`)：HTML 模式，注意 GBK 编码
+- **笔趣阁(加密版)** (`bqg691.cc / bqg78.com / biquge78.org`)：AES 加密 API + `curl_cffi` 模拟浏览器指纹
+- **anpan.cc**：HTML 模式，`list_url_template` 自动构造目录 URL
 
 ## 核心模块职责
 
@@ -93,9 +109,17 @@ USER_AGENT=Mozilla/5.0 ...  # 默认 UA
 - 章节标题规范化
 
 ### engine/downloader.py
-- `discover_chapters(url)` — 识别站点 → 解析章节列表
+- `discover_chapters(url)` — 识别站点 → 解析章节列表（支持 html/api/encrypted_api 三种模式）
 - `download_all(chapters, book_id)` — 遍历下载，跳过已完成的
+- `_discover_from_encrypted_api()` — 通过 AES 加密 API 获取章节列表
+- `_download_chapter_encrypted()` — 通过加密 API 逐章下载（curl_cffi + 限速重试）
 - 完成后调用 formatter 输出
+
+### engine/aes_crypto.py
+- AES-128-CBC 加密工具，用于 `list_type=encrypted_api` 站点
+- `encrypt_api_request(data)` — 将请求数据加密为 base64 token
+- `build_api_url(endpoint, data)` — 构建完整加密 API URL
+- 加密密钥从站点 JS 中提取的固定 hash 值
 
 ### engine/progress.py
 - 进度缓存到 `cache/{book_id}/progress.json`
@@ -151,4 +175,6 @@ beautifulsoup4>=4.12
 lxml>=5.1
 pydantic-settings>=2.0
 ebooklib>=0.18
+pycryptodome>=3.20        # AES 加密（加密 API 站点）
+curl_cffi>=0.7            # 模拟浏览器指纹（加密 API 站点）
 ```
