@@ -11,7 +11,7 @@ from Crypto.Util.Padding import pad
 # 从页面 JS 中提取的固定 hash 值
 # 由 CryptoJS.MD5(特定字符串).toString() 计算得出
 _API_CODE = "394c2c3202da6270a3dc22cf70418a51"
-_API_HOST = "apibi.cc"
+_API_HOST = "www.bqg691.cc"
 
 
 def encrypt_api_request(data: dict) -> str:
